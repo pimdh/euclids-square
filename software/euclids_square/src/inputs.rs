@@ -7,18 +7,19 @@ type SwitchDebouncer = DebouncerStateful<u8, Repeat4>;
 type RotDebouncer = DebouncerStateful<u8, Repeat2>;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub enum RotEvent {
+pub enum RotDirection {
     Cw,
     Ccw,
-    None,
 }
 
-impl From<RotEvent> for isize {
-    fn from(event: RotEvent) -> Self {
+type RotEvent = Option<RotDirection>;
+
+
+impl From<RotDirection> for isize {
+    fn from(event: RotDirection) -> Self {
         match event {
-            RotEvent::Cw => 1,
-            RotEvent::Ccw => -1,
-            RotEvent::None => 0,
+            RotDirection::Cw => 1,
+            RotDirection::Ccw => -1,
         }
     }
 }
@@ -50,8 +51,8 @@ pub struct RotEnc {
 impl Default for RotEnc {
     fn default() -> Self {
         Self {
-            pin_a: debounce_stateful_2(true),
-            pin_b: debounce_stateful_2(true),
+            pin_a: debounce_stateful_2(false),
+            pin_b: debounce_stateful_2(false),
         }
     }
 }
@@ -59,9 +60,9 @@ impl Default for RotEnc {
 impl RotEnc {
     fn update(&mut self, pin_a: bool, pin_b: bool) -> RotEvent {
         match (self.pin_a.update(pin_a), self.pin_b.update(pin_b)) {
-            (Some(Edge::Rising), _) if self.pin_b.is_low() => RotEvent::Cw,
-            (Some(Edge::Rising), _) if self.pin_b.is_high() => RotEvent::Ccw,
-            _ => RotEvent::None,
+            (Some(Edge::Rising), _) if self.pin_b.is_low() => Some(RotDirection::Cw),
+            (Some(Edge::Rising), _) if self.pin_b.is_high() => Some(RotDirection::Ccw),
+            _ => None
         }
     }
 }
@@ -73,7 +74,7 @@ struct Switch {
 impl Default for Switch {
     fn default() -> Self {
         Self {
-            debouncer: debounce_stateful_4(true),
+            debouncer: debounce_stateful_4(false),
         }
     }
 }

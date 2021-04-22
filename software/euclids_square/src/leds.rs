@@ -1,6 +1,12 @@
 use stm32f7::stm32f7x2::{GPIOC, TIM1, TIM5};
 
-pub fn show_leds_pwm(gpioc: &GPIOC, tim1: &TIM1, tim5: &TIM5, data: &[u32; 16], step: u8) {
+pub type LedData = [u32; 16];
+
+pub fn layer_color(i: usize, val: u8) -> u32 {
+    (val as u32) << ((i % 3) * 8)
+}
+
+pub fn show_leds_pwm(gpioc: &GPIOC, tim1: &TIM1, tim5: &TIM5, data: &LedData, step: u8) {
     gpioc.odr.modify(|_, w| {
         w.odr0().low()
          .odr1().low()

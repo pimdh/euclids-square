@@ -16,14 +16,16 @@ mod sequencer;
 mod leds;
 mod init_peripherals;
 mod inputs;
+mod ui;
 
 use synthesizer::{BUFFER_LEN, dma_handler, DmaState, Synth, SynthVoice};
-use leds::{show_leds_pwm};
+use leds::{show_leds_pwm, LedData};
 use init_peripherals::{init_peripherals, init_dma1, init_clock};
 use sequencer::Sequencer;
-use inputs::{Inputs, RotEvent};
+use inputs::{Inputs};
+use ui::{UiState, OutputEvent};
 
-const NUM_VOICES: usize = 3;
+const NUM_LAYERS: usize = 3;
 
 // We need to pass monotonic = rtic::cyccnt::CYCCNT to use schedule feature fo RTIC
 #[app(device = stm32f7::stm32f7x2, peripherals = true, monotonic = rtic::cyccnt::CYCCNT)]
@@ -42,10 +44,12 @@ const APP: () = {
         tim4: TIM4,
         tim5: TIM5,
         tim6: TIM6,
-        led_data: [u32; 16],
-        synth: Synth<NUM_VOICES>,
-        sequencer: Sequencer<NUM_VOICES, 16>,
+        led_data: LedData,
+        led_data_sequencer: LedData,
+        synth: Synth<NUM_LAYERS>,
+        sequencer: Sequencer<NUM_LAYERS, 16>,
         inputs: Inputs,
+        ui: UiState<NUM_LAYERS>,
     }
 
     #[init(spawn = [init_dma1_task])]
@@ -63,13 +67,14 @@ const APP: () = {
         
         let synth = Synth { voices: [SynthVoice::new(0), SynthVoice::new(1), SynthVoice::new(2)]};
         let mut sequencer: Sequencer<3, 16> = Default::default();
-        sequencer.set_sequence(0, 16, 4, 0);
-        sequencer.set_sequence(1, 12, 7, 2);
-        sequencer.set_sequence(2, 5, 3, 0);
+        sequencer.set_sequence(0, 16, 1, 0);
+        sequencer.set_sequence(1, 1, 0, 0);
+        sequencer.set_sequence(2, 1, 0, 0);
 
         iprintln!(&mut itm.stim[0], "{:?}", sequencer);
 
         let inputs: Inputs = Default::default();
+        let ui: UiState<NUM_LAYERS> = Default::default();
 
         init::LateResources {
             auido_buffer: [0; BUFFER_LEN],
@@ -86,9 +91,11 @@ const APP: () = {
             tim5: device.TIM5,
             tim6: device.TIM6,
             led_data: [0u32; 16],
+            led_data_sequencer: [0u32; 16],
             synth, 
             sequencer,
             inputs,
+            ui,
         }
     }
 
@@ -126,54 +133,55 @@ const APP: () = {
     }
 
     // Sequencer timer
-    #[task(binds = TIM4, resources=[sequencer, led_data, tim4, synth], priority=1)]
-    fn tim4(mut cx: tim4::Context) {
+    #[task(binds = TIM4, resources=[sequencer, led_data_sequencer, tim4, synth], priority=1)]
+    fn tim4(cx: tim4::Context) {
         let tim4 = cx.resources.tim4;
         tim4.sr.modify(|_, w| w.uif().clear_bit());
 
         let (gates, new_led_data) = cx.resources.sequencer.step();
-        cx.resources.led_data.lock(|led_data| {
-            let _ = mem::replace(led_data, new_led_data);
-        });
+        // cx.resources.led_data_sequencer.lock(|led_data| {
+        //     let _ = mem::replace(led_data, new_led_data);
+        // });
+        let _ = mem::replace(cx.resources.led_data_sequencer, new_led_data);
         cx.resources.synth.apply_gates(gates);
     }
 
-    // Input polling
-    #[task(binds = TIM6_DAC, resources=[tim6, inputs, gpioa, gpiob, gpioc, itm], priority=1)]
+    // User interface
+    #[task(binds = TIM6_DAC, resources=[tim6, inputs, gpioa, gpiob, gpioc, itm, ui, led_data, led_data_sequencer, sequencer], priority=1)]
     fn tim6(mut cx: tim6::Context) {
         let tim6 = cx.resources.tim6;
         let inputs = cx.resources.inputs;
         tim6.sr.modify(|_, w| w.uif().clear_bit());
         let itm = cx.resources.itm;
+        let ui = cx.resources.ui;
+        let sequencer = cx.resources.sequencer;
 
         let gpioa_read = cx.resources.gpioa.idr.read();
         let gpiob_read = cx.resources.gpiob.idr.read();
         let gpioc_read = cx.resources.gpioc.lock(|gpioc| gpioc.idr.read());
-        let event = inputs.update(gpioa_read, gpiob_read, gpioc_read);
-        if let Some(v) = event.switch_a.edge {
-            iprintln!(&mut itm.stim[0], "Switch A: {:#?}", v);
+        let input_event = inputs.update(gpioa_read, gpiob_read, gpioc_read);
+        let output_events = ui.update(input_event);
+
+        for output_event in output_events {
+            match output_event {
+                OutputEvent::LayerUpdate (layer, layer_state) => {
+                    iprintln!(&mut itm.stim[0], "{} {:?}", layer, layer_state);
+                    sequencer.set_sequence(layer, layer_state.length, layer_state.hits, layer_state.shift);
+                },
+                OutputEvent::TempoUpdate (tempo) => {
+                    // TODO
+                },
+                OutputEvent::IsPlaying (is_playing) => {
+                    // TODO
+                },
+            }
+
         }
-        if let Some(v) = event.switch_b.edge {
-            iprintln!(&mut itm.stim[0], "Switch B: {:#?}", v);
-        }
-        if let Some(v) = event.switch_c.edge {
-            iprintln!(&mut itm.stim[0], "Switch C: {:#?}", v);
-        }
-        if let Some(v) = event.switch_d.edge {
-            iprintln!(&mut itm.stim[0], "Switch D: {:#?}", v);
-        }
-        if event.rot_a != RotEvent::None {
-            iprintln!(&mut itm.stim[0], "ROT A: {:#?}", event.rot_a);
-        }
-        if event.rot_b != RotEvent::None {
-            iprintln!(&mut itm.stim[0], "ROT B: {:#?}", event.rot_b);
-        }
-        if event.rot_c != RotEvent::None {
-            iprintln!(&mut itm.stim[0], "ROT C: {:#?}", event.rot_c);
-        }
-        if event.rot_d != RotEvent::None {
-            iprintln!(&mut itm.stim[0], "ROT D: {:#?}", event.rot_d);
-        }
+
+        let new_led_data = ui.render(cx.resources.led_data_sequencer);
+        cx.resources.led_data.lock(|led_data| {
+            let _ = mem::replace(led_data, new_led_data);
+        });
     }
 
     extern "C" {

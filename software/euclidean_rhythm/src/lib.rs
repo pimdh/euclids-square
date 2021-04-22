@@ -6,20 +6,27 @@ extern crate std;
 
 use arrayvec::ArrayVec;
 
-pub fn euclidean_rhythm<const MAXLEN: usize>(pulses: usize, steps: usize) -> ArrayVec<u8, MAXLEN> {
+pub fn euclidean_rhythm<const MAXLEN: usize>(hits: usize, steps: usize) -> ArrayVec<u8, MAXLEN> {
     let mut pattern: ArrayVec<u8, MAXLEN> = ArrayVec::new();
     pattern.clear();
 
-    assert!(pulses <= steps);
+    assert!(hits <= steps);
     assert!(steps <= MAXLEN);
 
-    let mut divisor = steps - pulses;
+    if hits == 0 {
+        for _ in 0..steps {
+            pattern.push(0);
+        }
+        return pattern;
+    }
+
+    let mut divisor = steps - hits;
 
     let mut level = 0;
     let mut counts = ArrayVec::<usize, MAXLEN>::new();
     let mut remainders = ArrayVec::<usize, MAXLEN>::new();
 
-    remainders.push(pulses);
+    remainders.push(hits);
 
     // Run the euclid algorithm, store all the intermediate results
     loop {
@@ -80,8 +87,8 @@ mod tests {
             ((5, 8), vec![1, 0, 1, 1, 0, 1, 1, 0]),
             ((5, 16), vec![1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0])
         ];
-        for ((pulses, steps), rythm) in &data {
-            let res = euclidean_rhythm::<64>(*pulses, *steps);
+        for ((hits, steps), rythm) in &data {
+            let res = euclidean_rhythm::<64>(*hits, *steps);
             let res_vec: std::vec::Vec<_> = res.into_iter().collect();
             assert!(res_vec == *rythm);
         }
