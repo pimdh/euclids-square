@@ -1,0 +1,1 @@
+This crate is a fork of the crate https://github.com/padenot/euclidian-rythms. I've made some minor modifications to the API and added some tests.

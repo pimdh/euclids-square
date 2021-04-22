@@ -1,0 +1,56 @@
+[package]
+authors = ["Pim de Haan <pimdehaan@gmail.com>"]
+edition = "2018"
+readme = "README.md"
+name = "euclids_square"
+version = "0.1.0"
+
+[dependencies]
+panic-halt = "0.2"
+panic-itm = "0.4.2"
+panic-semihosting = "0.5.6"
+cortex-m-semihosting = "0.3.5"
+embedded-hal = "0.2.3"
+cortex-m-rtic = "0.5.1"
+cortex-m = "0.6.4"
+cortex-m-rt = "0.6.13"
+oorandom = "11.1.3"
+array-init = "2.0.0"
+debouncr = "0.2.2"
+
+[dependencies.itertools]
+version = "0.10.0"
+default-features = false
+
+[dependencies.arrayvec]
+version = "0.7.0"
+default-features = false
+
+[dependencies.stm32f7]
+version = "0.11.0"
+features = ["stm32f7x2", "rt"]
+
+[dependencies.euclidean_rhythm]
+path = "../euclidean_rhythm"
+
+[dependencies.stm32f7xx-hal]
+version = "0.2.0"
+features = ["stm32f722"]
+
+# this lets you use `cargo fix`!
+[[bin]]
+name = "euclids_square"
+test = false
+bench = false
+
+[profile.dev]
+opt-level = 3
+codegen-units = 16
+debug = true
+lto = false
+
+[profile.release]
+opt-level = "s"     # optimize for size
+codegen-units = 1   # better optimizations
+debug = true        # symbols are nice and they don't increase the size on Flash
+lto = true          # better optimizations
