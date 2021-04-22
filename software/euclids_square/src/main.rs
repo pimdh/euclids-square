@@ -147,8 +147,9 @@ const APP: () = {
     }
 
     // User interface
-    #[task(binds = TIM6_DAC, resources=[tim6, inputs, gpioa, gpiob, gpioc, itm, ui, led_data, led_data_sequencer, sequencer], priority=1)]
+    #[task(binds = TIM6_DAC, resources=[tim6, inputs, gpioa, gpiob, gpioc, itm, ui, led_data, led_data_sequencer, sequencer, tim4], priority=1)]
     fn tim6(mut cx: tim6::Context) {
+        let tim4 = cx.resources.tim4;
         let tim6 = cx.resources.tim6;
         let inputs = cx.resources.inputs;
         tim6.sr.modify(|_, w| w.uif().clear_bit());
@@ -172,7 +173,8 @@ const APP: () = {
                     // TODO
                 },
                 OutputEvent::IsPlaying (is_playing) => {
-                    // TODO
+                    tim4.cr1.modify(|_, w| w.cen().bit(is_playing)); 
+                    sequencer.reset_steps();
                 },
             }
 

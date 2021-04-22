@@ -42,6 +42,10 @@ impl<const NUM_SEQS: usize, const MAX_SEQLEN: usize> Sequencer<NUM_SEQS, MAX_SEQ
         led_data
     }
 
+    pub fn reset_steps(&mut self) {
+        self.steps = [0; NUM_SEQS];
+    }
+
     pub fn step(&mut self) -> ([bool; NUM_SEQS], LedData) {
         let mut gates = [false; NUM_SEQS];
         let mut led_data = self.base_led_data;
