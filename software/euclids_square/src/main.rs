@@ -17,6 +17,7 @@ mod leds;
 mod init_peripherals;
 mod inputs;
 mod ui;
+mod view;
 
 use synthesizer::{BUFFER_LEN, dma_handler, DmaState, Synth, SynthVoice};
 use leds::{show_leds_pwm, LedData};
@@ -24,6 +25,7 @@ use init_peripherals::{init_peripherals, init_dma1, init_clock};
 use sequencer::Sequencer;
 use inputs::{Inputs};
 use ui::{UiState, OutputEvent};
+use view::render;
 
 const NUM_LAYERS: usize = 3;
 
@@ -45,7 +47,6 @@ const APP: () = {
         tim5: TIM5,
         tim6: TIM6,
         led_data: LedData,
-        led_data_sequencer: LedData,
         synth: Synth<NUM_LAYERS>,
         sequencer: Sequencer<NUM_LAYERS, 16>,
         inputs: Inputs,
@@ -68,8 +69,8 @@ const APP: () = {
         let synth = Synth { voices: [SynthVoice::new(0), SynthVoice::new(1), SynthVoice::new(2)]};
         let mut sequencer: Sequencer<3, 16> = Default::default();
         sequencer.set_sequence(0, 16, 1, 0);
-        sequencer.set_sequence(1, 1, 0, 0);
-        sequencer.set_sequence(2, 1, 0, 0);
+        sequencer.set_sequence(1, 16, 0, 0);
+        sequencer.set_sequence(2, 16, 0, 0);
 
         iprintln!(&mut itm.stim[0], "{:?}", sequencer);
 
@@ -91,7 +92,6 @@ const APP: () = {
             tim5: device.TIM5,
             tim6: device.TIM6,
             led_data: [0u32; 16],
-            led_data_sequencer: [0u32; 16],
             synth, 
             sequencer,
             inputs,
@@ -133,21 +133,17 @@ const APP: () = {
     }
 
     // Sequencer timer
-    #[task(binds = TIM4, resources=[sequencer, led_data_sequencer, tim4, synth], priority=1)]
+    #[task(binds = TIM4, resources=[sequencer, tim4, synth], priority=1)]
     fn tim4(cx: tim4::Context) {
         let tim4 = cx.resources.tim4;
         tim4.sr.modify(|_, w| w.uif().clear_bit());
 
-        let (gates, new_led_data) = cx.resources.sequencer.step();
-        // cx.resources.led_data_sequencer.lock(|led_data| {
-        //     let _ = mem::replace(led_data, new_led_data);
-        // });
-        let _ = mem::replace(cx.resources.led_data_sequencer, new_led_data);
+        let gates = cx.resources.sequencer.step();
         cx.resources.synth.apply_gates(gates);
     }
 
     // User interface
-    #[task(binds = TIM6_DAC, resources=[tim6, inputs, gpioa, gpiob, gpioc, itm, ui, led_data, led_data_sequencer, sequencer, tim4], priority=1)]
+    #[task(binds = TIM6_DAC, resources=[tim6, inputs, gpioa, gpiob, gpioc, itm, ui, led_data, sequencer, tim4], priority=1)]
     fn tim6(mut cx: tim6::Context) {
         let tim4 = cx.resources.tim4;
         let tim6 = cx.resources.tim6;
@@ -168,6 +164,7 @@ const APP: () = {
                 OutputEvent::LayerUpdate (layer, layer_state) => {
                     iprintln!(&mut itm.stim[0], "{} {:?}", layer, layer_state);
                     sequencer.set_sequence(layer, layer_state.length, layer_state.hits, layer_state.shift);
+                    // TODO set volume
                 },
                 OutputEvent::TempoUpdate (tempo) => {
                     // TODO
@@ -180,7 +177,7 @@ const APP: () = {
 
         }
 
-        let new_led_data = ui.render(cx.resources.led_data_sequencer);
+        let new_led_data = render(ui, sequencer);
         cx.resources.led_data.lock(|led_data| {
             let _ = mem::replace(led_data, new_led_data);
         });

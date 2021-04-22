@@ -3,20 +3,19 @@ use arrayvec::ArrayVec;
 use array_init::array_init;
 use debouncr::Edge;
 use crate::inputs::InputEvent;
-use crate::leds::LedData;
 
 #[derive(Debug, Clone)]
 pub struct UiState<const NUM_LAYERS: usize> {
-    is_playing: bool,
-    tempo: usize,
-    active_layer: usize,
-    time_since_last_action: usize,
-    layers: [LayerState; NUM_LAYERS],
-    view: View,
+    pub is_playing: bool,
+    pub tempo: usize,
+    pub active_layer: usize,
+    pub time_since_last_action: usize,
+    pub layers: [LayerState; NUM_LAYERS],
+    pub view: ViewState,
 }
 
 #[derive(Debug, Clone)]
-enum View {
+pub enum ViewState {
     Player,
     Sequencer,
     Sound,
@@ -47,7 +46,7 @@ impl<const NUM_LAYERS: usize> Default for UiState<NUM_LAYERS> {
                 hits: (if i == 0 { 1 } else { 0 }),
                 shift: 0,
             }),
-            view: View::Player,
+            view: ViewState::Player,
         }
     }
 }
@@ -63,13 +62,14 @@ fn clamp<T: Ord>(v: T, min: T, max: T) -> T {
 }
 
 impl<const NUM_LAYERS: usize> UiState<NUM_LAYERS> {
-    pub fn update(&mut self, input: InputEvent) -> ArrayVec<OutputEvent, 8> {
+    pub fn update(&mut self, input: InputEvent) -> ArrayVec<OutputEvent, 3> {
         let mut output_events = ArrayVec::new();
+        self.time_since_last_action += 1;
 
         // Switch layer
         if input.switch_c.edge == Some(Edge::Rising) {
             self.active_layer = (self.active_layer+1) % NUM_LAYERS;
-            self.view = View::Sequencer;
+            self.view = ViewState::Sequencer;
             self.time_since_last_action = 0;
         }
 
@@ -82,12 +82,17 @@ impl<const NUM_LAYERS: usize> UiState<NUM_LAYERS> {
         // Tempo
         if let Some(dir) = input.rot_b {
             self.tempo = clamp(self.tempo as isize + isize::from(dir), 1, 16) as usize;
-            self.view = View::Tempo;
+            self.view = ViewState::Tempo;
             self.time_since_last_action = 0;
             output_events.push(OutputEvent::IsPlaying(self.is_playing));
         }
 
         // Sound
+        if let Some(_dir) = input.rot_b {
+            // TODO
+        }
+
+        // Volume
         if let Some(_dir) = input.rot_b {
             // TODO
         }
@@ -113,21 +118,17 @@ impl<const NUM_LAYERS: usize> UiState<NUM_LAYERS> {
                 let hits = clamp(hits, 0, layer.length as isize) as usize;
                 layer.hits = hits;
             }
-            self.view = View::Sequencer;
+            self.view = ViewState::Sequencer;
             self.time_since_last_action = 0;
             output_events.push(OutputEvent::LayerUpdate(self.active_layer, layer.clone()));
         }
 
         // Back to Player after inaction
         if self.time_since_last_action > 3000 {
-            self.view = View::Player;
+            self.view = ViewState::Player;
             self.time_since_last_action = 0;
         }
 
         output_events
-    }
-
-    pub fn render(&self, sequencer_led_data: &LedData) -> LedData {
-        *sequencer_led_data
     }
 }
